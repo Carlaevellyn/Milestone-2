@@ -1,0 +1,15 @@
+# User Story 3 - Adi��o de amigos - Verifica��o de Persist�ncia
+
+expect true ehAmigo login=jpsauve amigo=oabath
+expect true ehAmigo login=oabath amigo=jpsauve
+expect true ehAmigo login=jdoe amigo=oabath
+expect true ehAmigo login=jdoe amigo=jpsauve
+expect true ehAmigo login=oabath amigo=jdoe
+expect true ehAmigo login=jpsauve amigo=jdoe
+
+expect {jpsauve,oabath} getAmigos login=jdoe
+expect {oabath,jdoe} getAmigos login=jpsauve
+expect {jpsauve,jdoe} getAmigos login=oabath
+
+encerrarSistema
+quit
