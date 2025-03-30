@@ -1,3 +1,4 @@
+// Classe Usuario.java - Representa um usuário na plataforma
 package br.ufal.ic.p2.jackut.models;
 
 import java.io.Serializable;
@@ -15,6 +16,7 @@ public class Usuario implements Serializable {
     private final Set<Usuario> convitesRecebidos = new LinkedHashSet<>();
     private final Queue<String> recadosRecebidos = new LinkedList<>();
 
+    // Construtor - Inicializa o usuário com login, senha e nome
     public Usuario(String login, String senha, String nome) {
         this.login = login;
         this.senha = senha;
@@ -57,14 +59,17 @@ public class Usuario implements Serializable {
         return convitesRecebidos.contains(usuario);
     }
 
+    // Adiciona um amigo à lista de amigos do usuário
     public boolean temRecados() {
         return !recadosRecebidos.isEmpty();
     }
 
+    // Envia um recado para outro usuário
     public void receberRecado(String recado) {
         recadosRecebidos.add(recado);
     }
 
+    // Lê o próximo recado recebido
     public String lerRecado() {
         return recadosRecebidos.poll();
     }
