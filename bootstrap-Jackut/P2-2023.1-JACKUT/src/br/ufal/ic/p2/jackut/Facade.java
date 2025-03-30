@@ -1,4 +1,4 @@
-// Facade.java com persistência em XML via XStream + proteção contra XML vazio
+// Classe Facade.java - Controla a lógica principal do sistema e gerencia persistência dos usuários em XML.
 package br.ufal.ic.p2.jackut;
 
 import br.ufal.ic.p2.jackut.models.Usuario;
@@ -13,6 +13,7 @@ public class Facade {
     private final Map<String, String> sessoes = new HashMap<>(); // idSessao -> login
     private int proximoIdSessao = 1;
 
+    // Construtor - Carrega os usuários a partir de um arquivo XML se existir
     public Facade() {
         File arquivo = new File("usuarios.xml");
         if (arquivo.exists() && arquivo.length() > 0) {
@@ -27,12 +28,14 @@ public class Facade {
         }
     }
 
+    // Reseta o sistema removendo todos os usuários e sessões
     public void zerarSistema() {
         usuarios.clear();
         sessoes.clear();
         proximoIdSessao = 1;
     }
 
+    // Cria um novo usuário no sistema
     public void criarUsuario(String login, String senha, String nome) {
         if (login == null || login.isEmpty()) {
             throw new RuntimeException("Login inválido.");
@@ -46,6 +49,7 @@ public class Facade {
         usuarios.put(login, new Usuario(login, senha, nome));
     }
 
+    // Abre uma sessão para um usuário autenticado
     public String abrirSessao(String login, String senha) {
         Usuario usuario = usuarios.get(login);
         if (usuario == null || !usuario.getSenha().equals(senha)) {
@@ -56,6 +60,7 @@ public class Facade {
         return idSessao;
     }
 
+    // Retorna um atributo específico do perfil de um usuário
     public String getAtributoUsuario(String login, String atributo) {
         Usuario usuario = usuarios.get(login);
         if (usuario == null) {
