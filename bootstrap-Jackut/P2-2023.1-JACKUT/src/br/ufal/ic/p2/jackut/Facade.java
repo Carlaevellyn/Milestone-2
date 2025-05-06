@@ -1,63 +1,83 @@
-// Facade.java com persistência em XML via XStream + proteção contra XML vazio
+/**
+ * Classe principal do sistema Jackut que atua como fachada para todas as operações.
+ * <p>
+ * Esta classe segue o padrão Facade, fornecendo uma interface simplificada para o sistema.
+ * Centraliza todas as chamadas aos diversos managers especializados.
+ * </p>
+ */
 package br.ufal.ic.p2.jackut;
 
+import br.ufal.ic.p2.jackut.managers.*;
 import br.ufal.ic.p2.jackut.models.Usuario;
-import com.thoughtworks.xstream.XStream;
-import com.thoughtworks.xstream.io.xml.StaxDriver;
-
-import java.io.*;
-import java.util.*;
 
 public class Facade {
-    private final Map<String, Usuario> usuarios = new HashMap<>();
-    private final Map<String, String> sessoes = new HashMap<>(); // idSessao -> login
-    private int proximoIdSessao = 1;
+    /**
+     * Inicializa o sistema e carrega os dados persistentes.
+     */
+
+    private final UserManager userManager;
+    private final SessionManager sessionManager;
+    private final CommunityManager communityManager;
+    private final RelationshipManager relationshipManager;
+    private final PersistenceManager persistenceManager;
 
     public Facade() {
-        File arquivo = new File("usuarios.xml");
-        if (arquivo.exists() && arquivo.length() > 0) {
-            try (Reader reader = new FileReader(arquivo)) {
-                XStream xstream = new XStream(new StaxDriver());
-                xstream.allowTypesByWildcard(new String[] { "br.ufal.ic.p2.jackut.**" });
-                Map<String, Usuario> dados = (Map<String, Usuario>) xstream.fromXML(reader);
-                usuarios.putAll(dados);
-            } catch (IOException e) {
-                throw new RuntimeException("Erro ao carregar os usuários.", e);
-            }
-        }
+        /**
+         * Cria um novo usuário no sistema.
+         *
+         * @param login Identificador único do novo usuário
+         * @param senha Senha do novo usuário
+         * @param nome Nome completo do novo usuário
+         * @throws RuntimeException Se o login já existir ou se algum parâmetro for inválido
+         */
+
+        this.userManager = new UserManager();
+        this.sessionManager = new SessionManager(userManager);
+        this.communityManager = new CommunityManager(userManager);
+        this.relationshipManager = new RelationshipManager(userManager);
+        this.persistenceManager = new PersistenceManager();
+
+        persistenceManager.carregarUsuarios(userManager);
+        persistenceManager.carregarComunidades(communityManager);
     }
 
+    //Limpa todos os dados do sistema, reiniciando todos os managers
     public void zerarSistema() {
-        usuarios.clear();
-        sessoes.clear();
-        proximoIdSessao = 1;
+        userManager.clear();
+        sessionManager.clear();
+        communityManager.clear();
     }
 
+    //Cria um novo usuário no sistema através do userManager
     public void criarUsuario(String login, String senha, String nome) {
-        if (login == null || login.isEmpty()) {
-            throw new RuntimeException("Login inválido.");
-        }
-        if (senha == null || senha.isEmpty()) {
-            throw new RuntimeException("Senha inválida.");
-        }
-        if (usuarios.containsKey(login)) {
-            throw new RuntimeException("Conta com esse nome já existe.");
-        }
-        usuarios.put(login, new Usuario(login, senha, nome));
+        userManager.criarUsuario(login, senha, nome);
+
+        /**
+         * Adiciona um amigo para o usuário da sessão atual.
+         *
+         * @param idSessao ID da sessão do usuário que está adicionando
+         * @param loginAmigo Login do usuário a ser adicionado como amigo
+         * @throws RuntimeException Se a sessão for inválida, se os usuários forem inimigos
+         *                         ou se o amigo já estiver na lista
+         */
     }
 
+    //Remove um usuário do sistema, incluindo suas comunidades e sessões
+    public void removerUsuario(String idSessao) {
+        Usuario usuario = sessionManager.getUsuarioPorSessao(idSessao);
+        communityManager.removerComunidadesDoUsuario(usuario);
+        sessionManager.removeSessoesDoUsuario(usuario.getLogin());
+        userManager.removerUsuario(usuario);
+    }
+
+    //Abre uma nova sessão para o usuário e retorna um ID de sessão
     public String abrirSessao(String login, String senha) {
-        Usuario usuario = usuarios.get(login);
-        if (usuario == null || !usuario.getSenha().equals(senha)) {
-            throw new RuntimeException("Login ou senha inválidos.");
-        }
-        String idSessao = "sessao_" + proximoIdSessao++;
-        sessoes.put(idSessao, login);
-        return idSessao;
+        return sessionManager.abrirSessao(login, senha);
     }
 
+    //Retorna um atributo específico do perfil do usuário (nome ou outros atributos do perfil)
     public String getAtributoUsuario(String login, String atributo) {
-        Usuario usuario = usuarios.get(login);
+        Usuario usuario = userManager.getUsuario(login);
         if (usuario == null) {
             throw new RuntimeException("Usuário não cadastrado.");
         }
@@ -73,8 +93,9 @@ public class Facade {
         return valor;
     }
 
+    //Permite ao usuário editar um atributo de seu perfil
     public void editarPerfil(String idSessao, String atributo, String valor) {
-        Usuario usuario = getUsuarioPorSessao(idSessao);
+        Usuario usuario = sessionManager.getUsuarioPorSessao(idSessao);
 
         if (atributo == null || atributo.isEmpty()) {
             throw new RuntimeException("Atributo não preenchido.");
@@ -83,105 +104,58 @@ public class Facade {
         usuario.getPerfil().adicionarAtributo(atributo, valor);
     }
 
+    //Adiciona um amigo ao usuário atual
     public void adicionarAmigo(String idSessao, String loginAmigo) {
-        Usuario usuario = getUsuarioPorSessao(idSessao);
-        Usuario amigo = usuarios.get(loginAmigo);
-
-        if (amigo == null) {
-            throw new RuntimeException("Usuário não cadastrado.");
-        }
-
-        if (usuario.equals(amigo)) {
-            throw new RuntimeException("Usuário não pode adicionar a si mesmo como amigo.");
-        }
-
-        if (usuario.getAmigos().contains(amigo)) {
-            throw new RuntimeException("Usuário já está adicionado como amigo.");
-        }
-
-        if (usuario.temConvitePendenteDe(amigo)) {
-            usuario.aceitarConvite(amigo);
-            return;
-        }
-
-        if (usuario.getConvitesEnviados().contains(amigo)) {
-            throw new RuntimeException("Usuário já está adicionado como amigo, esperando aceitação do convite.");
-        }
-
-        usuario.enviarConvite(amigo);
+        Usuario usuario = sessionManager.getUsuarioPorSessao(idSessao);
+        relationshipManager.adicionarAmigo(usuario, loginAmigo);
     }
 
+    //Verifica se dois usuários são amigos
     public boolean ehAmigo(String login1, String login2) {
-        Usuario u1 = usuarios.get(login1);
-        Usuario u2 = usuarios.get(login2);
-        return u1 != null && u2 != null &&
-                u1.getAmigos().contains(u2) &&
-                u2.getAmigos().contains(u1);
+        return relationshipManager.ehAmigo(login1, login2);
     }
 
+    //Verifica se um usuário é fã de outro
+    public boolean ehFa(String faLogin, String idoloLogin) {
+        return relationshipManager.ehFa(faLogin, idoloLogin);
+    }
+
+    //Verifica se um usuário tem uma paquera por outro
+    public boolean ehPaquera(String idSessao, String paqueraLogin) {
+        Usuario usuario = sessionManager.getUsuarioPorSessao(idSessao);
+        return relationshipManager.ehPaquera(usuario, paqueraLogin);
+    }
+
+    //Retorna a lista de amigos de um usuário
     public String getAmigos(String login) {
-        Usuario usuario = usuarios.get(login);
-        if (usuario == null) {
-            return "{}";
-        }
-
-        List<String> amigosOrdenados = new ArrayList<>();
-        for (Usuario amigo : usuario.getAmigos()) {
-            amigosOrdenados.add(amigo.getLogin());
-        }
-
-        if (login.equals("jpsauve")) {
-            amigosOrdenados.sort((a, b) -> {
-                if (a.equals("oabath") && b.equals("jdoe")) return -1;
-                if (a.equals("jdoe") && b.equals("oabath")) return 1;
-                return a.compareTo(b);
-            });
-        } else if (login.equals("oabath")) {
-            amigosOrdenados.sort((a, b) -> {
-                if (a.equals("jpsauve") && b.equals("jdoe")) return -1;
-                if (a.equals("jdoe") && b.equals("jpsauve")) return 1;
-                return a.compareTo(b);
-            });
-        }
-
-        return "{" + String.join(",", amigosOrdenados) + "}";
+        return relationshipManager.getAmigos(login);
     }
 
-    private Usuario getUsuarioPorSessao(String idSessao) {
-        if (idSessao == null || idSessao.isEmpty()) {
-            throw new RuntimeException("Usuário não cadastrado.");
-        }
-
-        String login = sessoes.get(idSessao);
-        if (login == null) {
-            throw new RuntimeException("Sessão inválida.");
-        }
-
-        Usuario usuario = usuarios.get(login);
-        if (usuario == null) {
-            throw new RuntimeException("Usuário não cadastrado.");
-        }
-
-        return usuario;
-    }
-
+    //Envia um recado de um usuário para outro
     public void enviarRecado(String idSessao, String destinatarioLogin, String recado) {
-        Usuario remetente = getUsuarioPorSessao(idSessao);
-        Usuario destinatario = usuarios.get(destinatarioLogin);
-
-        if (destinatario == null) {
-            throw new RuntimeException("Usuário não cadastrado.");
-        }
-
-        if (remetente.getLogin().equals(destinatarioLogin)) {
-            throw new RuntimeException("Usuário não pode enviar recado para si mesmo.");
-        }
-
-        destinatario.receberRecado(recado);
+        Usuario remetente = sessionManager.getUsuarioPorSessao(idSessao);
+        relationshipManager.enviarRecado(remetente, destinatarioLogin, recado);
     }
 
+    //Cria uma nova comunidade com o usuário atual como dono
+    public void criarComunidade(String sessao, String nome, String descricao) {
+        Usuario dono = sessionManager.getUsuarioPorSessao(sessao);
+        communityManager.criarComunidade(dono, nome, descricao);
+    }
+
+    //Obtém a descrição de uma comunidade
+    public String getDescricaoComunidade(String nome) {
+        return communityManager.getDescricaoComunidade(nome);
+    }
+
+    //Obtém o dono de uma comunidade
+    public String getDonoComunidade(String nome) {
+        return communityManager.getDonoComunidade(nome);
+    }
+
+    //Lê o próximo recado na fila de recados do usuário
     public String lerRecado(String idSessao) {
-        Usuario usuario = getUsuarioPorSessao(idSessao);
+        Usuario usuario = sessionManager.getUsuarioPorSessao(idSessao);
 
         if (!usuario.temRecados()) {
             throw new RuntimeException("Não há recados.");
@@ -190,205 +164,68 @@ public class Facade {
         return usuario.lerRecado();
     }
 
-    public void encerrarSistema() {
-        try (Writer writer = new FileWriter("usuarios.xml")) {
-            XStream xstream = new XStream(new StaxDriver());
-            xstream.allowTypesByWildcard(new String[] { "br.ufal.ic.p2.jackut.**" });
-            xstream.toXML(usuarios, writer);
-        } catch (IOException e) {
-            throw new RuntimeException("Erro ao salvar os usuários.", e);
+    //Obtém os membros de uma comunidade
+    public String getMembrosComunidade(String nome) {
+        return communityManager.getMembrosComunidade(nome);
+    }
+
+    //Adiciona o usuário atual a uma comunidade
+    public void adicionarComunidade(String sessao, String nome) {
+        Usuario usuario = sessionManager.getUsuarioPorSessao(sessao);
+        communityManager.adicionarMembro(usuario, nome);
+    }
+
+    //Obtém as comunidades de um usuário
+    public String getComunidades(String login) {
+        return communityManager.getComunidadesDoUsuario(login);
+    }
+
+    //Obtém os fãs de um usuário
+    public String getFas(String login) {
+        return relationshipManager.getFas(login);
+    }
+
+    //Obtém as paqueras do usuário atual
+    public String getPaqueras(String idSessao) {
+        Usuario usuario = sessionManager.getUsuarioPorSessao(idSessao);
+        return relationshipManager.getPaqueras(usuario);
+    }
+
+    //Envia uma mensagem para todos os membros de uma comunidade
+    public void enviarMensagem(String idSessao, String nomeComunidade, String mensagem) {
+        Usuario remetente = sessionManager.getUsuarioPorSessao(idSessao);
+        communityManager.enviarMensagemParaComunidade(remetente, nomeComunidade, mensagem);
+    }
+
+    //Adiciona um ídolo ao usuário atual
+    public void adicionarIdolo(String idSessao, String idoloLogin) {
+        Usuario usuario = sessionManager.getUsuarioPorSessao(idSessao);
+        relationshipManager.adicionarIdolo(usuario, idoloLogin);
+    }
+
+    //Adiciona uma paquera ao usuário atual
+    public void adicionarPaquera(String idSessao, String paqueraLogin) {
+        Usuario usuario = sessionManager.getUsuarioPorSessao(idSessao);
+        relationshipManager.adicionarPaquera(usuario, paqueraLogin);
+    }
+
+    //Adiciona um inimigo ao usuário atual
+    public void adicionarInimigo(String idSessao, String inimigoLogin) {
+        Usuario usuario = sessionManager.getUsuarioPorSessao(idSessao);
+        relationshipManager.adicionarInimigo(usuario, inimigoLogin);
+    }
+
+    //Lê a próxima mensagem na fila de mensagens do usuário
+    public String lerMensagem(String idSessao) {
+        Usuario usuario = sessionManager.getUsuarioPorSessao(idSessao);
+        if (!usuario.temMensagens()) {
+            throw new RuntimeException("Não há mensagens.");
         }
+        return usuario.lerMensagem();
+    }
+
+    //Salva todos os dados do sistema antes de encerrar
+    public void encerrarSistema() {
+        persistenceManager.salvarDados(userManager, communityManager);
     }
 }
-/**public class Facade {
-    private final Map<String, Usuario> usuarios = new HashMap<>();
-    private final Map<String, String> sessoes = new HashMap<>(); // idSessao -> login
-    private int proximoIdSessao = 1;
-
-    public Facade() {
-        File arquivo = new File("usuarios.xml");
-        if (arquivo.exists() && arquivo.length() > 0) {
-            try (Reader reader = new FileReader(arquivo)) {
-                XStream xstream = new XStream(new StaxDriver());
-                xstream.allowTypesByWildcard(new String[] { "br.ufal.ic.p2.jackut.**" });
-                Map<String, Usuario> dados = (Map<String, Usuario>) xstream.fromXML(reader);
-                usuarios.putAll(dados);
-            } catch (IOException e) {
-                throw new RuntimeException("Erro ao carregar os usuários.", e);
-            }
-        }
-    }
-
-    public void zerarSistema() {
-        usuarios.clear();
-        sessoes.clear();
-        proximoIdSessao = 1;
-    }
-
-    public void criarUsuario(String login, String senha, String nome) {
-        if (login == null || login.isEmpty()) {
-            throw new RuntimeException("Login inválido.");
-        }
-        if (senha == null || senha.isEmpty()) {
-            throw new RuntimeException("Senha inválida.");
-        }
-        if (usuarios.containsKey(login)) {
-            throw new RuntimeException("Conta com esse nome já existe.");
-        }
-        usuarios.put(login, new Usuario(login, senha, nome));
-    }
-
-    public String abrirSessao(String login, String senha) {
-        Usuario usuario = usuarios.get(login);
-        if (usuario == null || !usuario.getSenha().equals(senha)) {
-            throw new RuntimeException("Login ou senha inválidos.");
-        }
-        String idSessao = "sessao_" + proximoIdSessao++;
-        sessoes.put(idSessao, login);
-        return idSessao;
-    }
-
-    public String getAtributoUsuario(String login, String atributo) {
-        Usuario usuario = usuarios.get(login);
-        if (usuario == null) {
-            throw new RuntimeException("Usuário não cadastrado.");
-        }
-
-        if ("nome".equals(atributo)) {
-            return usuario.getNome();
-        }
-
-        String valor = usuario.getPerfil().getAtributo(atributo);
-        if (valor == null) {
-            throw new RuntimeException("Atributo não preenchido.");
-        }
-        return valor;
-    }
-
-    public void editarPerfil(String idSessao, String atributo, String valor) {
-        Usuario usuario = getUsuarioPorSessao(idSessao);
-
-        if (atributo == null || atributo.isEmpty()) {
-            throw new RuntimeException("Atributo não preenchido.");
-        }
-
-        usuario.getPerfil().adicionarAtributo(atributo, valor);
-    }
-
-    public void adicionarAmigo(String idSessao, String loginAmigo) {
-        Usuario usuario = getUsuarioPorSessao(idSessao);
-        Usuario amigo = usuarios.get(loginAmigo);
-
-        if (amigo == null) {
-            throw new RuntimeException("Usuário não cadastrado.");
-        }
-
-        if (usuario.equals(amigo)) {
-            throw new RuntimeException("Usuário não pode adicionar a si mesmo como amigo.");
-        }
-
-        if (usuario.getAmigos().contains(amigo)) {
-            throw new RuntimeException("Usuário já está adicionado como amigo.");
-        }
-
-        if (usuario.temConvitePendenteDe(amigo)) {
-            usuario.aceitarConvite(amigo);
-            return;
-        }
-
-        if (usuario.getConvitesEnviados().contains(amigo)) {
-            throw new RuntimeException("Usuário já está adicionado como amigo, esperando aceitação do convite.");
-        }
-
-        usuario.enviarConvite(amigo);
-    }
-
-    public boolean ehAmigo(String login1, String login2) {
-        Usuario u1 = usuarios.get(login1);
-        Usuario u2 = usuarios.get(login2);
-        return u1 != null && u2 != null &&
-                u1.getAmigos().contains(u2) &&
-                u2.getAmigos().contains(u1);
-    }
-
-    public String getAmigos(String login) {
-        Usuario usuario = usuarios.get(login);
-        if (usuario == null) {
-            return "{}";
-        }
-
-        List<String> amigosOrdenados = new ArrayList<>();
-        for (Usuario amigo : usuario.getAmigos()) {
-            amigosOrdenados.add(amigo.getLogin());
-        }
-
-        if (login.equals("jpsauve")) {
-            amigosOrdenados.sort((a, b) -> {
-                if (a.equals("oabath") && b.equals("jdoe")) return -1;
-                if (a.equals("jdoe") && b.equals("oabath")) return 1;
-                return a.compareTo(b);
-            });
-        } else if (login.equals("oabath")) {
-            amigosOrdenados.sort((a, b) -> {
-                if (a.equals("jpsauve") && b.equals("jdoe")) return -1;
-                if (a.equals("jdoe") && b.equals("jpsauve")) return 1;
-                return a.compareTo(b);
-            });
-        }
-
-        return "{" + String.join(",", amigosOrdenados) + "}";
-    }
-
-    private Usuario getUsuarioPorSessao(String idSessao) {
-        if (idSessao == null || idSessao.isEmpty()) {
-            throw new RuntimeException("Usuário não cadastrado.");
-        }
-
-        String login = sessoes.get(idSessao);
-        if (login == null) {
-            throw new RuntimeException("Sessão inválida.");
-        }
-
-        Usuario usuario = usuarios.get(login);
-        if (usuario == null) {
-            throw new RuntimeException("Usuário não cadastrado.");
-        }
-
-        return usuario;
-    }
-
-    public void enviarRecado(String idSessao, String destinatarioLogin, String recado) {
-        Usuario remetente = getUsuarioPorSessao(idSessao);
-        Usuario destinatario = usuarios.get(destinatarioLogin);
-
-        if (destinatario == null) {
-            throw new RuntimeException("Usuário não cadastrado.");
-        }
-
-        if (remetente.getLogin().equals(destinatarioLogin)) {
-            throw new RuntimeException("Usuário não pode enviar recado para si mesmo.");
-        }
-
-        destinatario.receberRecado(recado);
-    }
-
-    public String lerRecado(String idSessao) {
-        Usuario usuario = getUsuarioPorSessao(idSessao);
-
-        if (!usuario.temRecados()) {
-            throw new RuntimeException("Não há recados.");
-        }
-
-        return usuario.lerRecado();
-    }
-
-    public void encerrarSistema() {
-        try (Writer writer = new FileWriter("usuarios.xml")) {
-            XStream xstream = new XStream(new StaxDriver());
-            xstream.allowTypesByWildcard(new String[] { "br.ufal.ic.p2.jackut.**" });
-            xstream.toXML(usuarios, writer);
-        } catch (IOException e) {
-            throw new RuntimeException("Erro ao salvar os usuários.", e);
-        }
-    }
-}*/

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ProjectModuleManager">
+    <modules>
+      <module fileurl="file://$PROJECT_DIR$/.idea/Jackut.iml" filepath="$PROJECT_DIR$/.idea/Jackut.iml" />
+      <module fileurl="file://$PROJECT_DIR$/bootstrap-Jackut/P2-JACKUT/P2-JACKUT.iml" filepath="$PROJECT_DIR$/bootstrap-Jackut/P2-JACKUT/P2-JACKUT.iml" />
+      <module fileurl="file://$PROJECT_DIR$/bootstrap-Jackut/bootstrap-Jackut.iml" filepath="$PROJECT_DIR$/bootstrap-Jackut/bootstrap-Jackut.iml" />
+    </modules>
+  </component>
+</project>

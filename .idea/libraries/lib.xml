@@ -1,0 +1,11 @@
+<component name="libraryTable">
+  <library name="lib">
+    <CLASSES>
+      <root url="jar://$PROJECT_DIR$/bootstrap-Jackut/P2-JACKUT/lib/easyaccept.jar!/" />
+      <root url="jar://$PROJECT_DIR$/bootstrap-Jackut/P2-JACKUT/lib/xstream-1.4.21.jar!/" />
+      <root url="jar://$PROJECT_DIR$/bootstrap-Jackut/P2-JACKUT/lib/xpp3_min-1.1.4c.jar!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES />
+  </library>
+</component>
